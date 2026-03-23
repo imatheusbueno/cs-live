@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bueno CS2 Tracker</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* Estilos adicionais para as 3 sessões */
+        .section-title {
+            color: white;
+            font-size: 1.5rem;
+            font-weight: 900;
+            margin: 40px 0 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #30363d;
+            text-transform: uppercase;
+        }
+        .live-title { border-color: #ff4655; color: #ff4655; }
+        
+        .tag-past { background: #30363d; color: #8b949e; border: 1px solid #484f58; }
+        .tag-upcoming { background: #0d419d; color: #58a6ff; border: 1px solid #1f6feb; }
+        
+        /* Ocultar a tag vermelha nos jogos que não são ao vivo */
+        .not-live .live-tag { display: none; }
+        .status-badge-card {
+            position: absolute; 
+            top: 15px; 
+            right: 15px; 
+            padding: 4px 10px; 
+            border-radius: 4px; 
+            font-size: 0.75rem; 
+            font-weight: bold; 
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="logo">🎯 BUENO TRACKER</div>
+        <div class="status-badge" id="server-status"><span class="pulse"></span> SERVER ONLINE</div>
+    </nav>
+
+    <header class="hero">
+        <h1>CS2 Live Score</h1>
+        <p>Monitorando o cenário brasileiro de CS2 🚀</p>
+    </header>
+
+    <main class="container">
+        <h2 class="section-title live-title">🔴 Ao Vivo Agora</h2>
+        <section id="live-matches">
+            <p class="loading">Buscando jogos ao vivo...</p>
+        </section>
+
+        <h2 class="section-title">🗓️ Próximos Jogos</h2>
+        <section id="upcoming-matches">
+            <p class="loading">Buscando agenda...</p>
+        </section>
+
+        <h2 class="section-title">✅ Últimos 5 Resultados</h2>
+        <section id="past-matches">
+            <p class="loading">Buscando histórico...</p>
+        </section>
+    </main>
+
+    <script>
+        // Função que cria o visual do card
+        function createCard(m, type) {
+            let tagClass = "live-tag"; // Vermelho padrão
+            let tagText = "🔴 AO VIVO";
+            let hideLiveAnim = "";
+
+            if (type === 'past') {
+                tagClass = "status-badge-card tag-past";
+                tagText = "ENCERRADO";
+                hideLiveAnim = "not-live";
+            } else if (type === 'upcoming') {
+                tagClass = "status-badge-card tag-upcoming";
+                tagText = m.status || "EM BREVE"; // Mostra o horário se tiver
+                hideLiveAnim = "not-live";
+            }
+
+            return `
+                <div class="match-card ${hideLiveAnim}">
+                    <div class="event-name">${m.evento}</div>
+                    <div class="score-row">
+                        <div class="team-column">
+                            <img src="${m.logo1}" class="team-logo" onerror="this.src='https://www.hltv.org/img/static/team/placeholder.svg'">
+                            <span class="team-name">${m.equipe1}</span>
+                        </div>
+                        <span class="score-numbers">${m.placar1} : ${m.placar2}</span> 
+                        <div class="team-column">
+                            <img src="${m.logo2}" class="team-logo" onerror="this.src='https://www.hltv.org/img/static/team/placeholder.svg'">
+                            <span class="team-name">${m.equipe2}</span>
+                        </div>
+                    </div>
+                    <div class="${tagClass}">${tagText}</div>
+                </div>
+            `;
+        }
+
+        async function updateUI() {
+            const liveContainer = document.getElementById('live-matches');
+            const upcomingContainer = document.getElementById('upcoming-matches');
+            const pastContainer = document.getElementById('past-matches');
+            const statusBadge = document.getElementById('server-status');
+
+            try {
+                const res = await fetch('http://localhost:3001/live');
+                const data = await res.json();
+                
+                statusBadge.innerHTML = '<span class="pulse"></span> SERVER ONLINE';
+                statusBadge.removeAttribute('style');
+
+                // 1. Renderiza os Ao Vivo
+                liveContainer.innerHTML = "";
+                if (!data.live || data.live.length === 0) {
+                    liveContainer.innerHTML = "<p class='loading'>Nenhum time BR jogando neste exato momento.</p>";
+                } else {
+                    data.live.forEach(m => liveContainer.innerHTML += createCard(m, 'live'));
+                }
+
+                // 2. Renderiza os Futuros
+                upcomingContainer.innerHTML = "";
+                if (!data.upcoming || data.upcoming.length === 0) {
+                    upcomingContainer.innerHTML = "<p class='loading'>Sem jogos marcados para hoje.</p>";
+                } else {
+                    data.upcoming.forEach(m => upcomingContainer.innerHTML += createCard(m, 'upcoming'));
+                }
+
+                // 3. Renderiza os Passados
+                pastContainer.innerHTML = "";
+                if (!data.past || data.past.length === 0) {
+                    pastContainer.innerHTML = "<p class='loading'>Nenhum histórico recente encontrado.</p>";
+                } else {
+                    data.past.forEach(m => pastContainer.innerHTML += createCard(m, 'past'));
+                }
+
+            } catch (err) {
+                console.error("Erro no servidor:", err);
+                statusBadge.innerHTML = '<span class="pulse" style="background: #ff4655; animation: pulse-red 1.5s infinite;"></span> SERVER OFFLINE';
+                statusBadge.style.color = '#ff4655';
+                statusBadge.style.background = 'rgba(255, 70, 85, 0.1)';
+                statusBadge.style.borderColor = 'rgba(255, 70, 85, 0.3)';
+            }
+        }
+
+        updateUI();
+        setInterval(updateUI, 10000); // Atualiza a cada 10s pra não sobrecarregar a API livre
+    </script>
+</body>
+</html>
