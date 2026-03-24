@@ -50,7 +50,7 @@ Instalação
 Clone o repositório:
 
 Bash
-git clone https://github.com/seu-usuario/bueno-tracker.git
+git clone https://github.com/imatheusbueno/cs-live.git
 Navegue até a pasta do back-end e rode o servidor:
 
 Bash
