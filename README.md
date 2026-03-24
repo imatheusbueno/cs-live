@@ -2,7 +2,7 @@
 O Bueno Tracker é uma plataforma de monitoramento de partidas de Counter-Strike 2 em tempo real. O projeto utiliza uma arquitetura de alta performance com Go no Back-end e uma interface moderna com Glassmorphism no Front-end, consumindo dados oficiais via PandaScore API.
 
 🚀 Funcionalidades
-Live Dashboard: Acompanhe partidas que estão acontecendo agora, jogos futuros e resultados passados.
+Live Dashboard: Acompanhe partidas que estão acontecendo agora, jogos futuros e resultados passados.https://github.com/imatheusbueno/cs-live/blob/main/README.md
 
 Performance Instantânea: Graças ao sistema de Warm-up Cache, a API responde em milissegundos.
 
