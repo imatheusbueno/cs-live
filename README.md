@@ -61,7 +61,7 @@ Abra o arquivo index.html no seu navegador favorito.
 Dica: Aqui você pode colocar os prints que você tirou do site funcionando para mostrar o design antes mesmo da pessoa rodar o código!
 
 👤 Autor
-Matheus Bueno - Desenvolvedor Full Stack - Seu LinkedIn
+Matheus Bueno - Desenvolvedor Full Stack - www.linkedin.com/in/matheus-vinícius-bueno-24892b196
 
 📝 Próximos Passos
 [ ] Implementar WebSockets para Kill Feed real.
