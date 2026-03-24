@@ -5,9 +5,8 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math/rand"
 	"net/http"
-	"strings"
+	"sync"
 	"time"
 )
 
@@ -20,6 +19,7 @@ type Match struct {
 	Placar1 int    `json:"placar1"`
 	Placar2 int    `json:"placar2"`
 	Status  string `json:"status"`
+	Formato string `json:"formato"`
 }
 
 type Dashboard struct {
@@ -28,137 +28,125 @@ type Dashboard struct {
 	Upcoming []Match `json:"upcoming"`
 }
 
-var teamLogos = map[string]string{
-	"furia":       "https://raw.githubusercontent.com/lootmarket/esport-team-logos/master/csgo/furia/furia-logo.png",
-	"pain":        "https://raw.githubusercontent.com/lootmarket/esport-team-logos/master/csgo/pain/pain-logo.png",
-	"imperial":    "https://raw.githubusercontent.com/lootmarket/esport-team-logos/master/csgo/imperial-esports/imperial-esports-logo.png",
-	"mibr":        "https://raw.githubusercontent.com/lootmarket/esport-team-logos/master/csgo/mibr/mibr-logo.png",
-	"legacy":      "https://img.vavel.com/legacy-1692211432357.png",
-	"fluxo":       "https://raw.githubusercontent.com/lootmarket/esport-team-logos/master/csgo/fluxo/fluxo-logo.png",
-	"red canids":  "https://raw.githubusercontent.com/lootmarket/esport-team-logos/master/csgo/red-canids/red-canids-logo.png",
-	"corinthians": "https://upload.wikimedia.org/wikipedia/pt/b/b4/Corinthians_simbolo.png",
-	"navi":        "https://raw.githubusercontent.com/lootmarket/esport-team-logos/master/csgo/natus-vincere/natus-vincere-logo.png",
-	"vitality":    "https://raw.githubusercontent.com/lootmarket/esport-team-logos/master/csgo/vitality/vitality-logo.png",
-	"g2":          "https://raw.githubusercontent.com/lootmarket/esport-team-logos/master/csgo/g2/g2-logo.png",
-	"faze":        "https://raw.githubusercontent.com/lootmarket/esport-team-logos/master/csgo/faze-clan/faze-clan-logo.png",
-	"falcons":     "https://raw.githubusercontent.com/lootmarket/esport-team-logos/master/csgo/falcons/falcons-logo.png",
-	"nrg":         "https://raw.githubusercontent.com/lootmarket/esport-team-logos/master/csgo/nrg/nrg-logo.png",
+type PandaScoreMatch struct {
+	Status        string `json:"status"`
+	NumberOfGames int    `json:"number_of_games"`
+	League        struct {
+		Name string `json:"name"`
+	} `json:"league"`
+	Opponents []struct {
+		Opponent struct {
+			Name     string `json:"name"`
+			ImageURL string `json:"image_url"`
+		} `json:"opponent"`
+	} `json:"opponents"`
+	Results []struct {
+		Score int `json:"score"`
+	} `json:"results"`
 }
 
-func getLogo(teamName string) string {
-	name := strings.ToLower(teamName)
-	if url, ok := teamLogos[name]; ok {
-		return url
-	}
-	return "https://www.hltv.org/img/static/team/placeholder.svg"
-}
+var (
+	cachedDashboard Dashboard
+	cacheMutex      sync.RWMutex
+)
 
-func fetchAPI(url string) []Match {
+const apiKey = "Wtgh5cG2KGH_ZDUyfc08HCmsPRxe9NIaPbSIBTMAaJVURlINrjw"
+
+func fetchPandaScore(statusFilter string, sort string) []Match {
+	url := fmt.Sprintf("https://api.pandascore.co/csgo/matches?filter[status]=%s&sort=%s&per_page=12", statusFilter, sort)
+
 	req, _ := http.NewRequest("GET", url, nil)
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Accept", "application/json")
+
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 
+	result := make([]Match, 0)
 	if err != nil || resp.StatusCode != 200 {
-		return []Match{}
+		return result
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
 
-	var apiData []struct {
-		Team1 struct {
-			Name string `json:"name"`
-		} `json:"team1"`
-		Team2 struct {
-			Name string `json:"name"`
-		} `json:"team2"`
-		Event struct {
-			Name string `json:"name"`
-		} `json:"event"`
-		Time string `json:"time"`
-	}
+	body, _ := io.ReadAll(resp.Body)
+	var apiData []PandaScoreMatch
 	json.Unmarshal(body, &apiData)
 
-	var result []Match
-	timesBr := []string{"furia", "pain", "imperial", "mibr", "legacy", "fluxo", "red canids", "corinthians"}
-
 	for _, m := range apiData {
-		if m.Team1.Name != "" && m.Team2.Name != "" {
-			n1Lower, n2Lower := strings.ToLower(m.Team1.Name), strings.ToLower(m.Team2.Name)
-			temBr := false
-			for _, br := range timesBr {
-				if strings.Contains(n1Lower, br) || strings.Contains(n2Lower, br) {
-					temBr = true
-					break
-				}
+		if len(m.Opponents) == 2 {
+			logo1 := m.Opponents[0].Opponent.ImageURL
+			if logo1 == "" {
+				logo1 = "https://www.hltv.org/img/static/team/placeholder.svg"
+			}
+			logo2 := m.Opponents[1].Opponent.ImageURL
+			if logo2 == "" {
+				logo2 = "https://www.hltv.org/img/static/team/placeholder.svg"
 			}
 
-			if temBr {
-				status := m.Time
-				if status == "" {
-					status = "ENCERRADO"
-				}
-
-				result = append(result, Match{
-					Equipe1: m.Team1.Name,
-					Equipe2: m.Team2.Name,
-					Logo1:   getLogo(m.Team1.Name),
-					Logo2:   getLogo(m.Team2.Name),
-					Evento:  m.Event.Name,
-					Status:  status,
-					Placar1: rand.Intn(14),
-					Placar2: rand.Intn(14),
-				})
+			placar1, placar2 := 0, 0
+			if len(m.Results) == 2 {
+				placar1, placar2 = m.Results[0].Score, m.Results[1].Score
 			}
+
+			statusBR := "EM BREVE"
+			if m.Status == "running" {
+				statusBR = "AO VIVO"
+			}
+			if m.Status == "finished" {
+				statusBR = "ENCERRADO"
+			}
+
+			result = append(result, Match{
+				Equipe1: m.Opponents[0].Opponent.Name,
+				Equipe2: m.Opponents[1].Opponent.Name,
+				Logo1:   logo1,
+				Logo2:   logo2,
+				Evento:  m.League.Name,
+				Status:  statusBR,
+				Formato: fmt.Sprintf("MD%d", m.NumberOfGames),
+				Placar1: placar1,
+				Placar2: placar2,
+			})
 		}
 	}
 	return result
 }
 
-func getDashboard() Dashboard {
-	var dash Dashboard
+func updateDashboardData() {
+	live := fetchPandaScore("running", "begin_at")
+	upcoming := fetchPandaScore("not_started", "begin_at")
+	past := fetchPandaScore("finished", "-begin_at")
 
-	// Busca as partidas recentes (Passado)
-	pastMatches := fetchAPI("https://hltv-api.vercel.app/api/results.json")
-	if len(pastMatches) > 5 {
-		dash.Past = pastMatches[:5]
-	} else {
-		dash.Past = pastMatches
-	}
-
-	// TRAVA DE SEGURANÇA: Se a API gratuita demorar pra atualizar os jogos da semana
-	if len(dash.Past) == 0 {
-		dash.Past = []Match{
-			{Equipe1: "Falcons", Equipe2: "FURIA", Logo1: getLogo("falcons"), Logo2: getLogo("furia"), Evento: "BLAST Open Rotterdam", Placar1: 2, Placar2: 1, Status: "ENCERRADO"},
-			{Equipe1: "NRG", Equipe2: "FURIA", Logo1: getLogo("nrg"), Logo2: getLogo("furia"), Evento: "BLAST Open Rotterdam", Placar1: 1, Placar2: 2, Status: "ENCERRADO"},
-		}
-	}
-
-	// Busca as partidas de hoje/futuras
-	futureMatches := fetchAPI("https://hltv-api.vercel.app/api/matches.json")
-
-	for _, m := range futureMatches {
-		if strings.Contains(strings.ToUpper(m.Status), "LIVE") {
-			dash.Live = append(dash.Live, m)
-		} else {
-			m.Placar1 = 0
-			m.Placar2 = 0
-			dash.Upcoming = append(dash.Upcoming, m)
-		}
-	}
-
-	return dash
+	cacheMutex.Lock()
+	cachedDashboard = Dashboard{Past: past, Live: live, Upcoming: upcoming}
+	cacheMutex.Unlock()
 }
 
-func handler(w http.ResponseWriter, r *http.Request) {
+func startBackgroundWorker() {
+	updateDashboardData()
+	go func() {
+		ticker := time.NewTicker(60 * time.Second)
+		for {
+			<-ticker.C
+			updateDashboardData()
+		}
+	}()
+}
+
+func apiHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(getDashboard())
+
+	cacheMutex.RLock()
+	json.NewEncoder(w).Encode(cachedDashboard)
+	cacheMutex.RUnlock()
 }
 
 func main() {
-	rand.Seed(time.Now().UnixNano())
-	http.HandleFunc("/live", handler)
-	fmt.Println("🚀 Servidor rodando! Painel com trava de segurança para jogos recentes.")
+	cachedDashboard = Dashboard{Past: make([]Match, 0), Live: make([]Match, 0), Upcoming: make([]Match, 0)}
+	startBackgroundWorker()
+
+	http.HandleFunc("/live", apiHandler)
+	fmt.Println("🚀 Servidor Premium Online - Porta 3001")
 	log.Fatal(http.ListenAndServe(":3001", nil))
 }
